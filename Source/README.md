@@ -71,16 +71,16 @@ Recommended full-train preset for 2xT4:
 
 ```text
 max_length=512
-per_device_train_batch_size=8
-per_device_eval_batch_size=8
-gradient_accumulation_steps=1
+per_device_train_batch_size=4
+per_device_eval_batch_size=4
+gradient_accumulation_steps=2
 eval_steps=2000
 save_steps=2000
 max_train_samples=null
 max_eval_samples=null
 packing=true
 fp16=true
-gradient_checkpointing=false
+gradient_checkpointing=true
 ```
 
 After training, metrics are written under:
