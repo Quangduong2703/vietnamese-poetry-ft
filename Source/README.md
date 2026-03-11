@@ -48,6 +48,22 @@ Colab config preset:
 Source/configs/qwen25_15b_qlora_colab.json
 ```
 
+Run on Kaggle:
+
+```text
+1. Create a private Kaggle dataset containing train_creative_train.jsonl and train_creative_valid.jsonl
+2. Open Source/notebooks/qwen25_15b_qlora_kaggle.ipynb in Kaggle
+3. Turn on GPU and Internet
+4. Set DATASET_SLUG in the notebook to match your Kaggle dataset slug
+5. Run the cells in order
+```
+
+Kaggle config preset:
+
+```text
+Source/configs/qwen25_15b_qlora_kaggle.json
+```
+
 After training, metrics are written under:
 
 ```text
