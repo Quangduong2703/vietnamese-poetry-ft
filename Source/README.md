@@ -34,6 +34,20 @@ Run QLoRA training:
 powershell -ExecutionPolicy Bypass -File D:\NLP\Source\scripts\run_qwen25_15b_qlora.ps1
 ```
 
+Run on Google Colab:
+
+```text
+1. Upload train_creative_train.jsonl and train_creative_valid.jsonl to Google Drive
+2. Open Source/notebooks/qwen25_15b_qlora_colab.ipynb in Colab
+3. Run the cells in order
+```
+
+Colab config preset:
+
+```text
+Source/configs/qwen25_15b_qlora_colab.json
+```
+
 After training, metrics are written under:
 
 ```text
