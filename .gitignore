@@ -1,0 +1,6 @@
+Data/
+Outputs/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
