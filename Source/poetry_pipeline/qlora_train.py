@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
 
 import torch
 from datasets import load_dataset
@@ -39,6 +39,10 @@ DEFAULT_CONFIG = {
     "lora_alpha": 16,
     "lora_dropout": 0.05,
     "target_modules": "q_proj,k_proj,v_proj,o_proj",
+    "packing": False,
+    "dataloader_num_workers": 0,
+    "fp16": False,
+    "gradient_checkpointing": True,
     "seed": 42,
     "max_train_samples": None,
     "max_eval_samples": None,
@@ -117,6 +121,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lora_alpha", type=int, default=defaults["lora_alpha"])
     parser.add_argument("--lora_dropout", type=float, default=defaults["lora_dropout"])
     parser.add_argument("--target_modules", default=defaults["target_modules"])
+    parser.add_argument(
+        "--packing",
+        action=argparse.BooleanOptionalAction,
+        default=defaults["packing"],
+    )
+    parser.add_argument(
+        "--dataloader_num_workers",
+        type=int,
+        default=defaults["dataloader_num_workers"],
+    )
+    parser.add_argument(
+        "--fp16",
+        action=argparse.BooleanOptionalAction,
+        default=defaults["fp16"],
+    )
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action=argparse.BooleanOptionalAction,
+        default=defaults["gradient_checkpointing"],
+    )
     parser.add_argument("--seed", type=int, default=defaults["seed"])
     parser.add_argument("--max_train_samples", type=int, default=defaults["max_train_samples"])
     parser.add_argument("--max_eval_samples", type=int, default=defaults["max_eval_samples"])
@@ -188,7 +212,14 @@ def build_tokenizer(model_id: str):
     return tokenizer
 
 
-def build_model(model_id: str, target_modules: list[str], lora_r: int, lora_alpha: int, lora_dropout: float):
+def build_model(
+    model_id: str,
+    target_modules: list[str],
+    lora_r: int,
+    lora_alpha: int,
+    lora_dropout: float,
+    gradient_checkpointing: bool,
+):
     local_rank = get_local_rank()
     device_map = {"": local_rank} if get_world_size() > 1 else None
     quant_config = BitsAndBytesConfig(
@@ -205,7 +236,10 @@ def build_model(model_id: str, target_modules: list[str], lora_r: int, lora_alph
         device_map=device_map,
     )
     model.config.use_cache = False
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
+    model = prepare_model_for_kbit_training(
+        model,
+        use_gradient_checkpointing=gradient_checkpointing,
+    )
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
         r=lora_r,
@@ -283,12 +317,13 @@ def main() -> None:
         lora_r=args.lora_r,
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
+        gradient_checkpointing=args.gradient_checkpointing,
     )
 
     training_args = SFTConfig(
         output_dir=str(args.output_dir),
         max_length=args.max_length,
-        packing=False,
+        packing=args.packing,
         completion_only_loss=True,
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
@@ -306,14 +341,15 @@ def main() -> None:
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         report_to=["tensorboard"],
-        fp16=False,
+        fp16=args.fp16,
         bf16=False,
-        gradient_checkpointing=True,
-        gradient_checkpointing_kwargs={"use_reentrant": False},
+        gradient_checkpointing=args.gradient_checkpointing,
+        gradient_checkpointing_kwargs={"use_reentrant": False} if args.gradient_checkpointing else None,
         optim="paged_adamw_8bit",
         max_grad_norm=args.max_grad_norm,
         weight_decay=args.weight_decay,
         seed=args.seed,
+        dataloader_num_workers=args.dataloader_num_workers,
         remove_unused_columns=False,
         dataset_num_proc=1,
         ddp_find_unused_parameters=False if get_world_size() > 1 else None,
