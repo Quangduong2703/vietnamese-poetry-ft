@@ -1,8 +1,8 @@
 {
   "model_id": "Qwen/Qwen2.5-1.5B-Instruct",
-  "train_file": "/kaggle/input/vietnamese_poetry/train_creative_train.jsonl",
-  "valid_file": "/kaggle/input/vietnamese_poetry/train_creative_valid.jsonl",
-  "output_dir": "/kaggle/working/outputs/qwen25_15b_poetry_run1",
+  "train_file": "/kaggle/input/datasets/duongvuquang/vietnamese-poetry/train_creative_train.jsonl",
+  "valid_file": "/kaggle/input/datasets/duongvuquang/vietnamese-poetry/train_creative_valid.jsonl",
+  "output_dir": "/kaggle/working/vietnamese-poetry-ft/Outputs/qwen25_15b_poetry_run1",
   "max_length": 768,
   "num_train_epochs": 1.0,
   "learning_rate": 0.0001,
