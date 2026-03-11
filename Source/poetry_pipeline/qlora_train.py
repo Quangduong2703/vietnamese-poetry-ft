@@ -48,6 +48,22 @@ DEFAULT_CONFIG = {
 DEFAULT_CONFIG_PATH = CONFIGS_DIR / "qwen25_15b_qlora.json"
 
 
+def get_rank() -> int:
+    return int(os.environ.get("RANK", "0"))
+
+
+def get_local_rank() -> int:
+    return int(os.environ.get("LOCAL_RANK", "0"))
+
+
+def get_world_size() -> int:
+    return int(os.environ.get("WORLD_SIZE", "1"))
+
+
+def is_main_process() -> bool:
+    return get_rank() == 0
+
+
 def load_config(config_path: str | Path | None) -> dict:
     config = dict(DEFAULT_CONFIG)
     if config_path:
@@ -126,12 +142,15 @@ def print_gpu_summary() -> None:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available. This script expects an NVIDIA GPU.")
 
-    props = torch.cuda.get_device_properties(0)
+    local_rank = get_local_rank()
+    props = torch.cuda.get_device_properties(local_rank)
     total_gb = props.total_memory / 1024**3
-    print(f"GPU: {props.name}")
-    print(f"VRAM: {total_gb:.2f} GB")
-    if total_gb <= 4.1:
-        print("Note: 4 GB VRAM is tight. Keep max_length=512 and close other GPU apps.")
+    if is_main_process():
+        print(f"World size: {get_world_size()}")
+        print(f"GPU: {props.name}")
+        print(f"VRAM per GPU: {total_gb:.2f} GB")
+        if total_gb <= 4.1:
+            print("Note: 4 GB VRAM is tight. Keep max_length=512 and close other GPU apps.")
 
 
 def load_jsonl_dataset(
@@ -170,6 +189,8 @@ def build_tokenizer(model_id: str):
 
 
 def build_model(model_id: str, target_modules: list[str], lora_r: int, lora_alpha: int, lora_dropout: float):
+    local_rank = get_local_rank()
+    device_map = {"": local_rank} if get_world_size() > 1 else None
     quant_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -181,6 +202,7 @@ def build_model(model_id: str, target_modules: list[str], lora_r: int, lora_alph
         quantization_config=quant_config,
         dtype=torch.float16,
         low_cpu_mem_usage=True,
+        device_map=device_map,
     )
     model.config.use_cache = False
     model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
@@ -196,7 +218,8 @@ def build_model(model_id: str, target_modules: list[str], lora_r: int, lora_alph
     for param in model.parameters():
         if param.requires_grad:
             param.data = param.data.float()
-    model.print_trainable_parameters()
+    if is_main_process():
+        model.print_trainable_parameters()
     return model
 
 
@@ -206,6 +229,8 @@ def count_jsonl_rows(path: Path) -> int:
 
 
 def save_run_config(args: argparse.Namespace) -> None:
+    if not is_main_process():
+        return
     args.output_dir.mkdir(parents=True, exist_ok=True)
     config_path = args.output_dir / "run_config.json"
     config_path.write_text(
@@ -226,13 +251,17 @@ def main() -> None:
     ensure_runtime_dirs()
     require_file(args.train_file)
     require_file(args.valid_file)
+    if torch.cuda.is_available():
+        torch.cuda.set_device(get_local_rank())
     print_gpu_summary()
     set_seed(args.seed)
     save_run_config(args)
-    os.environ["TENSORBOARD_LOGGING_DIR"] = str(args.output_dir / "tensorboard")
+    if is_main_process():
+        os.environ["TENSORBOARD_LOGGING_DIR"] = str(args.output_dir / "runs")
 
-    print(f"Train rows on disk: {count_jsonl_rows(args.train_file)}")
-    print(f"Valid rows on disk: {count_jsonl_rows(args.valid_file)}")
+    if is_main_process():
+        print(f"Train rows on disk: {count_jsonl_rows(args.train_file)}")
+        print(f"Valid rows on disk: {count_jsonl_rows(args.valid_file)}")
 
     dataset = load_jsonl_dataset(
         args.train_file,
@@ -242,8 +271,9 @@ def main() -> None:
     )
     train_dataset = dataset["train"]
     eval_dataset = dataset["validation"]
-    print(f"Train rows loaded: {len(train_dataset)}")
-    print(f"Valid rows loaded: {len(eval_dataset)}")
+    if is_main_process():
+        print(f"Train rows loaded: {len(train_dataset)}")
+        print(f"Valid rows loaded: {len(eval_dataset)}")
 
     tokenizer = build_tokenizer(args.model_id)
     target_modules = [module.strip() for module in args.target_modules.split(",") if module.strip()]
@@ -286,6 +316,7 @@ def main() -> None:
         seed=args.seed,
         remove_unused_columns=False,
         dataset_num_proc=1,
+        ddp_find_unused_parameters=False if get_world_size() > 1 else None,
     )
 
     trainer = SFTTrainer(
@@ -297,16 +328,17 @@ def main() -> None:
     )
 
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
-    trainer.save_model(str(args.output_dir))
-    tokenizer.save_pretrained(str(args.output_dir))
-    trainer.state.save_to_json(str(args.output_dir / "trainer_state.json"))
-    if args.plot_metrics:
+    if trainer.is_world_process_zero():
+        trainer.save_model(str(args.output_dir))
+        tokenizer.save_pretrained(str(args.output_dir))
+        trainer.state.save_to_json(str(args.output_dir / "trainer_state.json"))
+    if args.plot_metrics and trainer.is_world_process_zero():
         artifacts = render_metrics_artifacts(trainer.state.log_history, args.output_dir)
         print(f"Metrics JSONL:      {artifacts['jsonl']}")
         print(f"Metrics CSV:        {artifacts['csv']}")
         print(f"Metrics summary:    {artifacts['summary']}")
         print(f"Metrics dashboard:  {artifacts['dashboard']}")
-    print(f"Training complete. Adapter saved to {args.output_dir}")
+        print(f"Training complete. Adapter saved to {args.output_dir}")
 
 
 if __name__ == "__main__":

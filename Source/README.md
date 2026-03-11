@@ -39,7 +39,9 @@ Run on Google Colab:
 ```text
 1. Upload train_creative_train.jsonl and train_creative_valid.jsonl to Google Drive
 2. Open Source/notebooks/qwen25_15b_qlora_colab.ipynb in Colab
-3. Run the cells in order
+3. Enable GPU runtime
+4. The notebook detects GPU count and runs torchrun automatically
+5. Run the cells in order
 ```
 
 Colab config preset:
@@ -55,13 +57,26 @@ Run on Kaggle:
 2. Open Source/notebooks/qwen25_15b_qlora_kaggle.ipynb in Kaggle
 3. Turn on GPU and Internet
 4. Set DATASET_SLUG in the notebook to match your Kaggle dataset slug
-5. Run the cells in order
+5. The notebook detects GPU count and runs torchrun automatically
+6. Run the cells in order
 ```
 
 Kaggle config preset:
 
 ```text
 Source/configs/qwen25_15b_qlora_kaggle.json
+```
+
+Recommended full-train preset for 2xT4:
+
+```text
+max_length=512
+per_device_train_batch_size=2
+per_device_eval_batch_size=2
+gradient_accumulation_steps=8
+eval_steps=500
+save_steps=500
+max_train_samples=null
 ```
 
 After training, metrics are written under:
