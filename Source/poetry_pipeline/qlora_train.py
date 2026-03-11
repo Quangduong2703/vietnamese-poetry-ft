@@ -231,7 +231,7 @@ def build_model(
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=quant_config,
-        dtype=torch.float16,
+        torch_dtype=torch.float16,
         low_cpu_mem_usage=True,
         device_map=device_map,
     )
