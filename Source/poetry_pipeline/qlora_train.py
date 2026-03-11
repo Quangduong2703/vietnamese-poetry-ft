@@ -285,6 +285,7 @@ def main() -> None:
     ensure_runtime_dirs()
     require_file(args.train_file)
     require_file(args.valid_file)
+    os.environ["ACCELERATE_MIXED_PRECISION"] = "fp16" if args.fp16 else "no"
     if torch.cuda.is_available():
         torch.cuda.set_device(get_local_rank())
     print_gpu_summary()

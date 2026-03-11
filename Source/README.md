@@ -79,7 +79,7 @@ save_steps=2000
 max_train_samples=null
 max_eval_samples=null
 packing=true
-fp16=true
+fp16=false
 gradient_checkpointing=true
 ```
 
